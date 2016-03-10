@@ -42,25 +42,26 @@ $(document).ready(function () {
     AROUND_IP: 4,
     AROUND_NYC: 5,
     AROUND_LONDON: 6,
-    AROUND_SYDNEY: 7
+    AROUND_SYDNEY: 7,
+    SEARCH_QUERY: 8
   };
   var pageState = PAGE_STATES.LOAD;
-  setPageState(PAGE_STATES.BOUNDING_BOX_RECTANGLE);
+  setPageState(PAGE_STATES.AROUND_IP);
 
   // PAGE STATES
   // ===========
   function setPageState(state) {
-    resetPageState();
+    resetPageState(state);
     beginPageState(state);
   }
 
   function beginPageState(state) {
     pageState = state;
-
+    //console.log(pageState);
     switch (state) {
       case PAGE_STATES.BOUNDING_BOX_RECTANGLE:
-        boundingBox = new google.maps.Rectangle({
-          bounds: {north: 60, south: 40, east: 16, west: -4},
+        /*boundingBox = new google.maps.Rectangle({
+          bounds: map.getBounds(),
           strokeColor: '#EF5362',
           strokeOpacity: 0.8,
           strokeWeight: 2,
@@ -70,13 +71,14 @@ $(document).ready(function () {
           editable: true,
           geodesic: true,
           map: map
-        });
-        algoliaHelper.setQueryParameter('insideBoundingBox', rectangleToAlgoliaParams(boundingBox));
-        boundingBoxListeners.push(google.maps.event.addListener(
+        });*/
+        algoliaHelper.setQueryParameter('insideBoundingBox', rectangleToAlgoliaParams(map.getBounds()));
+        /*boundingBoxListeners.push(google.maps.event.addListener(
           boundingBox,
           'bounds_changed',
           throttle(rectangleBoundsChanged, 150)
-        ));
+        ));*/
+        fitMapToMarkersAutomatically = false;
         break;
 
       case PAGE_STATES.BOUNDING_BOX_POLYGON:
@@ -122,6 +124,7 @@ $(document).ready(function () {
 
       case PAGE_STATES.AROUND_IP:
         algoliaHelper.setQueryParameter('aroundLatLngViaIP', true);
+        fitMapToMarkersAutomatically = true;
         break;
 
       case PAGE_STATES.AROUND_NYC:
@@ -135,44 +138,62 @@ $(document).ready(function () {
       case PAGE_STATES.AROUND_SYDNEY:
         algoliaHelper.setQueryParameter('aroundLatLng', '-33.86, 151.20');
         break;
-
       default:
         // No-op
     }
 
-    fitMapToMarkersAutomatically = true;
+    //console.log(algoliaHelper.getQueryParameter());
+
     algoliaHelper.search();
   }
 
-  function resetPageState() {
+  function resetPageState(state) {
     if (boundingBox) boundingBox.setMap(null);
     for (var i = 0; i < boundingBoxListeners.length; ++i) {
       google.maps.event.removeListener(boundingBoxListeners[i]);
     }
     boundingBoxListeners = [];
-    $searchInput.val('');
+    if(state != PAGE_STATES.SEARCH_QUERY){
+      $searchInput.val('');
+      renderHitsFlag = false;
+    }
     algoliaHelper.setQuery('');
     algoliaHelper.setQueryParameter('insideBoundingBox', undefined);
     algoliaHelper.setQueryParameter('insidePolygon', undefined);
     algoliaHelper.setQueryParameter('aroundLatLng', undefined);
     algoliaHelper.setQueryParameter('aroundLatLngViaIP', undefined);
+
   }
 
   // TEXTUAL SEARCH
   // ===============
+  var renderHitsFlag = false;
   $searchInput.on('input propertychange', function (e) {
     var query = e.currentTarget.value;
-    if (pageState === PAGE_STATES.BOUNDING_BOX_RECTANGLE || pageState === PAGE_STATES.BOUNDING_BOX_POLYGON) {
-      fitMapToMarkersAutomatically = false;
+    if(!query){
+      renderHitsFlag = false;
+      setPageState(PAGE_STATES.AROUND_IP);
+      return;
     }
+    /*if (pageState === PAGE_STATES.BOUNDING_BOX_RECTANGLE || pageState === PAGE_STATES.BOUNDING_BOX_POLYGON) {
+      fitMapToMarkersAutomatically = false;
+    }*/
+    renderHitsFlag = true;
+    resetPageState(PAGE_STATES.SEARCH_QUERY);
+    fitMapToMarkersAutomatically = true;
     algoliaHelper.setQuery(query).search();
   });
 
   // DISPLAY RESULTS
   // ===============
   algoliaHelper.on('result', function (content) {
+    //console.log(content);
     renderMap(content);
+    if(renderHitsFlag){
     renderHits(content);
+    } else {
+      $hits.html('');
+    }
   });
 
   algoliaHelper.on('error', function (error) {
@@ -216,7 +237,7 @@ $(document).ready(function () {
 
   // EVENTS BINDING
   // ==============
-  $('.change_page_state').on('click', function (e) {
+  /*$('.change_page_state').on('click', function (e) {
     e.preventDefault();
     updateMenu($(this).data('state'), $(this).data('mode'));
     switch ($(this).data('state')) {
@@ -241,6 +262,10 @@ $(document).ready(function () {
       default:
         // No op
     }
+  });*/
+
+  map.addListener('dragend', function() {
+    setPageState(PAGE_STATES.BOUNDING_BOX_RECTANGLE);
   });
 
   // HELPER METHODS
@@ -275,8 +300,8 @@ $(document).ready(function () {
     algoliaHelper.setQueryParameter('insidePolygon', polygonsToAlgoliaParams(boundingBox)).search();
   }
 
-  function rectangleToAlgoliaParams(rectangle) {
-    var bounds = rectangle.getBounds();
+  function rectangleToAlgoliaParams(bounds) {
+    //var bounds = rectangle.getBounds();
     var ne = bounds.getNorthEast();
     var sw = bounds.getSouthWest();
     return [ne.lat(), ne.lng(), sw.lat(), sw.lng()].join();
